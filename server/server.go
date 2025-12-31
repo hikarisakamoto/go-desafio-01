@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -44,6 +46,9 @@ func cotacaoHandler(rw http.ResponseWriter, rq *http.Request) {
 		return
 	}
 
+	rw.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(rw).Encode(cotacao.USDBRL.Bid)
+
 }
 
 func criarTabelaNoBanco() error {
@@ -76,15 +81,11 @@ func criarTabelaNoBanco() error {
 func salvarCotacaoNoBanco(cotacao *Cotacao) error {
 	dsn := "file:cotacoes.db?cache=shared&mode=rwc&_foreign_keys=on"
 
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		panic(err)
-	}
-
+	db, _ := sql.Open("sqlite3", dsn)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
-	_, err = db.ExecContext(ctx,
+	_, err := db.ExecContext(ctx,
 		`insert into cotacoes (
 			code, codein, name, high, low, varBid, pctChange, bid, ask, timestamp, create_date
 		) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -100,10 +101,13 @@ func salvarCotacaoNoBanco(cotacao *Cotacao) error {
 		cotacao.USDBRL.Timestamp,
 		cotacao.USDBRL.CreateDate,
 	)
-
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Printf("db insert timed out")
+		}
+	}
 	return err
 }
-
 func getCotacao() Cotacao {
 	// Cria um contexto com timeout de 200ms
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -116,22 +120,19 @@ func getCotacao() Cotacao {
 	// Executa a requisição HTTP
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		panic(err)
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Printf("req timed out")
+			panic(err)
+		}
 	}
 	defer res.Body.Close()
 
 	// Lê o corpo da resposta
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		panic(err)
-	}
+	body, _ := io.ReadAll(res.Body)
 
 	// Faz o unmarshal(serialização) do JSON para a struct Cotacao
 	var cotacao Cotacao
-	err = json.Unmarshal(body, &cotacao)
-	if err != nil {
-		panic(err)
-	}
+	json.Unmarshal(body, &cotacao)
 
 	return cotacao
 }
