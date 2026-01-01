@@ -47,13 +47,9 @@ func cotacaoHandler(rw http.ResponseWriter, rq *http.Request) {
 		return
 	}
 
-	bid, err := strconv.ParseFloat(cotacao.USDBRL.Bid, 64)
-	if err != nil {
-		http.Error(rw, "Erro ao converter bid", http.StatusInternalServerError)
-		return
-	}
-	json.NewEncoder(rw).Encode(bid)
+	bid, _ := strconv.ParseFloat(cotacao.USDBRL.Bid, 64)
 
+	json.NewEncoder(rw).Encode(bid)
 }
 
 func criarTabelaNoBanco() error {
@@ -87,7 +83,7 @@ func salvarCotacaoNoBanco(cotacao *Cotacao) error {
 	dsn := "file:cotacoes.db?cache=shared&mode=rwc&_foreign_keys=on"
 
 	db, _ := sql.Open("sqlite3", dsn)
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
 	_, err := db.ExecContext(ctx,
@@ -111,11 +107,13 @@ func salvarCotacaoNoBanco(cotacao *Cotacao) error {
 			log.Printf("db insert timed out")
 		}
 	}
+
 	return err
 }
+
 func getCotacao() Cotacao {
 	// Cria um contexto com timeout de 200ms
-	ctx, cancel := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	// Cria a requisição HTTP com o contexto
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
